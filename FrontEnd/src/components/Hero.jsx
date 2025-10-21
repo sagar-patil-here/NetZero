@@ -1,13 +1,20 @@
 import React from 'react'
+import { useNavigate } from 'react-router-dom'
 import { BackgroundPaths } from '@/components/ui/background-paths'
 import { CarbonBG } from '@/components/ui/carbon-bg'
+import { useAuth } from '../contexts/AuthContext'
 
 const Hero = () => {
+  const navigate = useNavigate()
+  const { currentUser } = useAuth()
+
   const handleStartTracking = () => {
-    // Scroll to features section or navigate to sign up
-    const featuresSection = document.getElementById('features')
-    if (featuresSection) {
-      featuresSection.scrollIntoView({ behavior: 'smooth' })
+    // If user is logged in, redirect to dashboard
+    if (currentUser) {
+      navigate('/dashboard')
+    } else {
+      // If not logged in, go to sign in
+      navigate('/signin')
     }
   }
 

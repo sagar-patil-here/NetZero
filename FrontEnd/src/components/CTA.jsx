@@ -1,5 +1,6 @@
 import React from 'react'
 import { motion } from 'framer-motion'
+import { Link } from 'react-router-dom'
 import { ArrowRight, CheckCircle, Star, Users } from 'lucide-react'
 import { ScrollFloat } from '@/components/ui/scroll-float'
 import { InteractiveHoverButton } from '@/components/ui/interactive-hover-button'
@@ -87,18 +88,18 @@ const CTA = () => {
             </div>
 
             <div className="space-y-4">
-              <div onClick={() => console.log('Start Free Trial clicked')}>
+              <Link to="/signup">
                 <InteractiveHoverButton
                   text="Start Free Trial"
                   className="text-base"
                 />
-              </div>
-              <div onClick={() => console.log('Contact Sales clicked')}>
+              </Link>
+              <Link to="/signin">
                 <InteractiveHoverButton
                   text="Contact Sales"
                   className="text-base"
                 />
-              </div>
+              </Link>
             </div>
 
             <div className="mt-6 text-center">

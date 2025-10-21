@@ -1,20 +1,31 @@
 import React, { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import Hero from './components/Hero'
-import WhyTrack from './components/WhyTrack'
-import Features from './components/Features'
-import Stats from './components/Stats'
-import CTA from './components/CTA'
-import Footer from './components/Footer'
-import Navbar from './components/Navbar'
+import { useNavigate } from 'react-router-dom'
 import Preloader from './components/Preloader'
-import SmoothReveal from './components/SmoothReveal'
+import LandingPage from './components/LandingPage'
+import Dashboard from './components/Dashboard'
+import { useAuth } from './contexts/AuthContext'
 
 function App() {
   const [isLoading, setIsLoading] = useState(true)
   const [showContent, setShowContent] = useState(false)
+  const [isFirstVisit, setIsFirstVisit] = useState(true)
+  const { currentUser, loading } = useAuth()
+  const navigate = useNavigate()
 
   useEffect(() => {
+    // Check if this is the first visit to the website
+    const hasVisited = localStorage.getItem('netzero-visited')
+    if (hasVisited) {
+      setIsFirstVisit(false)
+      setIsLoading(false)
+      setShowContent(true)
+      return
+    }
+
+    // First visit - show preloader
+    setIsFirstVisit(true)
+
     // Prevent scrolling during loading
     if (isLoading) {
       document.body.style.overflow = 'hidden'
@@ -34,14 +45,27 @@ function App() {
   }, [isLoading])
 
   const handleLoadComplete = () => {
+    // Mark as visited after preloader completes
+    localStorage.setItem('netzero-visited', 'true')
     setIsLoading(false)
   }
 
+  // Redirect users based on authentication status
+  useEffect(() => {
+    if (!loading) {
+      if (currentUser) {
+        navigate('/dashboard')
+      } else {
+        navigate('/landing')
+      }
+    }
+  }, [currentUser, loading, navigate])
+
   return (
     <>
-      {/* Preloader - Shows first */}
+      {/* Preloader - Shows only on first visit */}
       <AnimatePresence mode="wait">
-        {isLoading && (
+        {isLoading && isFirstVisit && (
           <div className="fixed inset-0 z-[150]">
             <Preloader onLoadComplete={handleLoadComplete} />
           </div>
@@ -57,33 +81,7 @@ function App() {
             transition={{ duration: 0.8, ease: [0.43, 0.13, 0.23, 0.96] }}
             className="min-h-screen bg-black relative z-10"
           >
-            <Navbar />
-
-            <SmoothReveal>
-              <Hero />
-            </SmoothReveal>
-
-            <SmoothReveal delay={0.1}>
-              <WhyTrack />
-            </SmoothReveal>
-
-            <div className="bg-black">
-              <SmoothReveal delay={0.2}>
-                <Stats />
-              </SmoothReveal>
-
-              <SmoothReveal delay={0.1}>
-                <Features />
-              </SmoothReveal>
-
-              <SmoothReveal delay={0.1}>
-                <CTA />
-              </SmoothReveal>
-
-              <SmoothReveal delay={0.1}>
-                <Footer />
-              </SmoothReveal>
-            </div>
+            <LandingPage />
           </motion.div>
         )}
       </AnimatePresence>

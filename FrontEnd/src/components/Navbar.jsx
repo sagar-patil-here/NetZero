@@ -1,11 +1,16 @@
 import React, { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
-import { Menu, X, Leaf } from 'lucide-react'
+import { Link, useNavigate } from 'react-router-dom'
+import { Menu, X, Leaf, LogOut, User } from 'lucide-react'
 import { InteractiveHoverButton } from '@/components/ui/interactive-hover-button'
+import { useAuth } from '../contexts/AuthContext'
 
 const Navbar = () => {
   const [isScrolled, setIsScrolled] = useState(false)
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
+  const [showUserMenu, setShowUserMenu] = useState(false)
+  const { currentUser, logout } = useAuth()
+  const navigate = useNavigate()
 
   useEffect(() => {
     const handleScroll = () => {
@@ -15,12 +20,43 @@ const Navbar = () => {
     return () => window.removeEventListener('scroll', handleScroll)
   }, [])
 
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (showUserMenu && !event.target.closest('.user-menu-container')) {
+        setShowUserMenu(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [showUserMenu])
+
   const navItems = [
     { name: 'Features', href: '#features' },
-    { name: 'Analytics', href: '#analytics' },
+    { name: 'Analytics', href: currentUser ? '/dashboard' : '#analytics' },
     { name: 'Integration', href: '#integration' },
     { name: 'Pricing', href: '#pricing' },
   ]
+
+  const handleNavClick = (href) => {
+    if (currentUser && href === '/dashboard') {
+      navigate('/dashboard')
+    } else if (href.startsWith('#')) {
+      // Handle anchor links for landing page sections
+      const element = document.querySelector(href)
+      if (element) {
+        element.scrollIntoView({ behavior: 'smooth' })
+      }
+    }
+  }
+
+  const handleLogout = async () => {
+    try {
+      await logout()
+      setShowUserMenu(false)
+    } catch (error) {
+      console.error('Logout error:', error)
+    }
+  }
 
   return (
     <motion.nav
@@ -40,51 +76,99 @@ const Navbar = () => {
       <div className="container mx-auto px-6">
         <div className="flex items-center justify-between h-16">
           {/* Logo */}
-          <motion.div
-            whileHover={{ scale: 1.05 }}
-            className="flex items-center gap-0"
-          >
-            <div className="relative">
-              {/* Zero Logo from SVG - Horizontal */}
-              <div className="w-16 h-8 flex items-center justify-center">
-                <img
-                  src="/number-0-svgrepo-com.svg"
-                  alt="NetZero Logo"
-                  className="w-full h-full object-contain filter drop-shadow-lg"
-                  style={{ filter: 'brightness(0) invert(1)', transform: 'rotate(90deg)' }}
-                />
+          <Link to="/landing">
+            <motion.div
+              whileHover={{ scale: 1.05 }}
+              className="flex items-center gap-0 cursor-pointer"
+            >
+              <div className="relative">
+                {/* Zero Logo from SVG - Horizontal */}
+                <div className="w-16 h-8 flex items-center justify-center">
+                  <img
+                    src="/number-0-svgrepo-com.svg"
+                    alt="NetZero Logo"
+                    className="w-full h-full object-contain filter drop-shadow-lg"
+                    style={{ filter: 'brightness(0) invert(1)', transform: 'rotate(90deg)' }}
+                  />
+                </div>
               </div>
-            </div>
-            <span className="text-xl font-bold text-white">NetZero</span>
-          </motion.div>
+              <span className="text-xl font-bold text-white">NetZero</span>
+            </motion.div>
+          </Link>
 
           {/* Desktop Navigation */}
           <div className="hidden md:flex items-center gap-8">
             {navItems.map((item) => (
-              <a
+              <button
                 key={item.name}
-                href={item.href}
+                onClick={() => handleNavClick(item.href)}
                 className="text-carbon-300 hover:text-white transition-colors duration-300 font-medium"
               >
                 {item.name}
-              </a>
+              </button>
             ))}
           </div>
 
           {/* CTA Button */}
           <div className="hidden md:flex items-center gap-4">
-            <div onClick={() => console.log('Sign In clicked')}>
-              <InteractiveHoverButton
-                text="Sign In"
-                className="text-sm"
-              />
-            </div>
-            <div onClick={() => console.log('Get Started clicked')}>
-              <InteractiveHoverButton
-                text="Get Started"
-                className="text-sm"
-              />
-            </div>
+            {currentUser ? (
+              <div className="relative user-menu-container">
+                <button
+                  onClick={() => setShowUserMenu(!showUserMenu)}
+                  className="flex items-center gap-2 text-white hover:text-gray-300 transition-colors"
+                >
+                  <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center">
+                    {currentUser.photoURL ? (
+                      <img
+                        src={currentUser.photoURL}
+                        alt="Profile"
+                        className="w-8 h-8 rounded-full"
+                      />
+                    ) : (
+                      <User className="w-4 h-4" />
+                    )}
+                  </div>
+                  <span className="text-sm font-medium">
+                    {currentUser.displayName || currentUser.email}
+                  </span>
+                </button>
+                
+                {showUserMenu && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -10 }}
+                    className="absolute right-0 mt-2 w-48 bg-black/90 backdrop-blur-xl border border-white/10 rounded-lg shadow-lg py-2"
+                  >
+                    <div className="px-4 py-2 border-b border-white/10">
+                      <p className="text-sm text-gray-300">{currentUser.email}</p>
+                    </div>
+                    <button
+                      onClick={handleLogout}
+                      className="w-full px-4 py-2 text-left text-sm text-white hover:bg-white/10 flex items-center gap-2"
+                    >
+                      <LogOut className="w-4 h-4" />
+                      Sign Out
+                    </button>
+                  </motion.div>
+                )}
+              </div>
+            ) : (
+              <>
+                <Link to="/signin">
+                  <InteractiveHoverButton
+                    text="Sign In"
+                    className="text-sm"
+                  />
+                </Link>
+                <button onClick={() => navigate('/signup')}>
+                  <InteractiveHoverButton
+                    text="Get Started"
+                    className="text-sm"
+                  />
+                </button>
+              </>
+            )}
           </div>
 
           {/* Mobile menu button */}
@@ -106,28 +190,56 @@ const Navbar = () => {
           >
             <div className="px-6 py-4 space-y-4">
               {navItems.map((item) => (
-                <a
+                <button
                   key={item.name}
-                  href={item.href}
-                  className="block text-carbon-300 hover:text-white transition-colors duration-300 font-medium"
-                  onClick={() => setIsMobileMenuOpen(false)}
+                  onClick={() => {
+                    handleNavClick(item.href)
+                    setIsMobileMenuOpen(false)
+                  }}
+                  className="block text-carbon-300 hover:text-white transition-colors duration-300 font-medium w-full text-left"
                 >
                   {item.name}
-                </a>
+                </button>
               ))}
               <div className="pt-4 border-t border-white/10 space-y-3">
-                <div onClick={() => console.log('Mobile Sign In clicked')}>
-                  <InteractiveHoverButton
-                    text="Sign In"
-                    className="text-sm"
-                  />
-                </div>
-                <div onClick={() => console.log('Mobile Get Started clicked')}>
-                  <InteractiveHoverButton
-                    text="Get Started"
-                    className="text-sm"
-                  />
-                </div>
+                {currentUser ? (
+                  <div className="space-y-3">
+                    <div className="px-4 py-2 bg-white/5 rounded-lg">
+                      <p className="text-sm text-white font-medium">
+                        {currentUser.displayName || 'User'}
+                      </p>
+                      <p className="text-xs text-gray-400">{currentUser.email}</p>
+                    </div>
+                    <button
+                      onClick={() => {
+                        handleLogout()
+                        setIsMobileMenuOpen(false)
+                      }}
+                      className="w-full flex items-center justify-center gap-2 bg-red-500/20 text-red-400 hover:bg-red-500/30 px-4 py-2 rounded-lg transition-colors"
+                    >
+                      <LogOut className="w-4 h-4" />
+                      Sign Out
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    <Link to="/signin" onClick={() => setIsMobileMenuOpen(false)}>
+                      <InteractiveHoverButton
+                        text="Sign In"
+                        className="text-sm"
+                      />
+                    </Link>
+                    <button onClick={() => {
+                      navigate('/signup')
+                      setIsMobileMenuOpen(false)
+                    }}>
+                      <InteractiveHoverButton
+                        text="Get Started"
+                        className="text-sm"
+                      />
+                    </button>
+                  </>
+                )}
               </div>
             </div>
           </motion.div>
