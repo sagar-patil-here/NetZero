@@ -1,7 +1,7 @@
 import React from 'react'
 import { motion } from 'framer-motion'
 import { useAuth } from '../contexts/AuthContext'
-import { Mail, Calendar, TrendingUp, Camera, X } from 'lucide-react'
+import { Mail, Calendar, TrendingUp, Camera, X, RefreshCw } from 'lucide-react'
 import Navbar from './Navbar'
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001'
@@ -27,6 +27,7 @@ const Dashboard = () => {
   const [connectionData, setConnectionData] = React.useState(null)
   const [salesData, setSalesData] = React.useState(null)
   const [salesLoading, setSalesLoading] = React.useState(false)
+  const [odooCredentials, setOdooCredentials] = React.useState(null)
 
   const userInitial = React.useMemo(() => {
     const source = currentUser?.displayName || currentUser?.email || ''
@@ -54,7 +55,7 @@ const Dashboard = () => {
     setSelectedApiMethod(null)
     setApiFormData({ url: '', apiKey: '', secret: '', username: '', password: '', dbName: '' })
     setConnectionError('')
-    setConnectionData(null)
+    // Don't clear connectionData and salesData - keep them for dashboard display
     setConnectionLoading(false)
   }
 
@@ -127,8 +128,20 @@ const Dashboard = () => {
 
         if (data.success) {
           setConnectionData(data)
+          // Store credentials for future use
+          const credentials = {
+            url: apiFormData.url,
+            dbName: apiFormData.dbName,
+            username: apiFormData.username,
+            password: apiFormData.password
+          }
+          setOdooCredentials(credentials)
           // Automatically fetch sales data after successful connection
-          await fetchSalesData()
+          await fetchSalesData(credentials)
+          // Close modal after successful connection and data fetch
+          setTimeout(() => {
+            closeConnectModal()
+          }, 1000)
         } else {
           throw new Error(data.error || 'Connection failed')
         }
@@ -205,8 +218,9 @@ const Dashboard = () => {
     }
   }
 
-  const fetchSalesData = async () => {
-    if (selectedErpSystem !== 'ODOO') return
+  const fetchSalesData = async (credentials = null) => {
+    const creds = credentials || odooCredentials
+    if (!creds) return
 
     setSalesLoading(true)
     try {
@@ -216,10 +230,10 @@ const Dashboard = () => {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          url: apiFormData.url,
-          dbName: apiFormData.dbName,
-          username: apiFormData.username,
-          password: apiFormData.password,
+          url: creds.url,
+          dbName: creds.dbName,
+          username: creds.username,
+          password: creds.password,
           limit: 100,
           offset: 0,
         }),
@@ -238,7 +252,7 @@ const Dashboard = () => {
       }
     } catch (error) {
       console.error('Fetch sales error:', error)
-      setConnectionError(error.message || 'Failed to fetch sales data')
+      // Don't set connection error here, just log it
     } finally {
       setSalesLoading(false)
     }
@@ -380,8 +394,8 @@ const Dashboard = () => {
                   <TrendingUp className="w-6 h-6 text-blue-400" />
                 </div>
                 <div>
-                  <p className="text-2xl font-bold text-white">0</p>
-                  <p className="text-sm text-gray-400">Projects Tracked</p>
+                  <p className="text-2xl font-bold text-white">{salesData?.count || 0}</p>
+                  <p className="text-sm text-gray-400">Sales Orders</p>
                 </div>
               </div>
             </div>
@@ -399,6 +413,85 @@ const Dashboard = () => {
             </div>
           </motion.div>
 
+          {/* Odoo Sales Data Section */}
+          {salesData && salesData.data && salesData.data.length > 0 && (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.6, delay: 0.5 }}
+              className="bg-gradient-to-r from-white/5 to-white/10 backdrop-blur-sm rounded-2xl p-8 border border-white/10 mb-8"
+            >
+              <div className="flex items-center justify-between mb-6">
+                <div>
+                  <h3 className="text-2xl font-bold text-white mb-2">Odoo Sales Orders</h3>
+                  <p className="text-gray-400 text-sm">
+                    Connected to: {connectionData?.authenticatedUser || 'Odoo'}
+                  </p>
+                </div>
+                <button
+                  onClick={() => fetchSalesData()}
+                  disabled={salesLoading}
+                  className="flex items-center gap-2 px-4 py-2 bg-blue-500/20 hover:bg-blue-500/30 text-blue-300 rounded-lg transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <RefreshCw className={`w-4 h-4 ${salesLoading ? 'animate-spin' : ''}`} />
+                  {salesLoading ? 'Refreshing...' : 'Refresh'}
+                </button>
+              </div>
+              
+              {salesLoading && !salesData.data && (
+                <div className="text-center py-8 text-gray-400">Loading sales data...</div>
+              )}
+              
+              <div className="space-y-3 max-h-96 overflow-y-auto">
+                {salesData.data.map((order) => (
+                  <div key={order.id} className="bg-white/5 rounded-lg p-4 border border-white/10 hover:bg-white/10 transition-colors">
+                    <div className="flex justify-between items-start mb-3">
+                      <div className="flex-1">
+                        <div className="font-semibold text-white text-lg mb-1">{order.name}</div>
+                        <div className="text-sm text-gray-400">Customer: {order.customer}</div>
+                        {order.reference && (
+                          <div className="text-xs text-gray-500 mt-1">Reference: {order.reference}</div>
+                        )}
+                      </div>
+                      <span className={`px-3 py-1 rounded-full text-xs font-medium ${
+                        order.state === 'sale' ? 'bg-green-500/20 text-green-300 border border-green-500/30' :
+                        order.state === 'draft' ? 'bg-yellow-500/20 text-yellow-300 border border-yellow-500/30' :
+                        order.state === 'cancel' ? 'bg-red-500/20 text-red-300 border border-red-500/30' :
+                        'bg-gray-500/20 text-gray-300 border border-gray-500/30'
+                      }`}>
+                        {order.state?.toUpperCase() || 'UNKNOWN'}
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                      <div>
+                        <div className="text-gray-400 text-xs mb-1">Date</div>
+                        <div className="text-white">{new Date(order.date).toLocaleDateString()}</div>
+                      </div>
+                      <div>
+                        <div className="text-gray-400 text-xs mb-1">Quantity</div>
+                        <div className="text-white font-semibold">{order.quantity || 0} units</div>
+                      </div>
+                      <div>
+                        <div className="text-gray-400 text-xs mb-1">Salesperson</div>
+                        <div className="text-white">{order.salesperson}</div>
+                      </div>
+                      <div>
+                        <div className="text-gray-400 text-xs mb-1">Order Lines</div>
+                        <div className="text-white">{order.lineCount} lines</div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              
+              {salesData.count > salesData.data.length && (
+                <div className="mt-4 text-center text-sm text-gray-400">
+                  Showing {salesData.data.length} of {salesData.count} orders
+                </div>
+              )}
+            </motion.div>
+          )}
+
           {/* Getting Started */}
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -415,7 +508,7 @@ const Dashboard = () => {
                 onClick={openConnectModal}
                 className="bg-white/10 hover:bg-white/20 text-white px-6 py-3 rounded-lg transition-colors"
               >
-                Connect Data Source
+                {odooCredentials ? 'Reconnect Data Source' : 'Connect Data Source'}
               </button>
               <button
                 onClick={handleNetzeroErpClick}
@@ -647,44 +740,7 @@ const Dashboard = () => {
                     <div className="rounded-xl border border-green-500/40 bg-green-500/10 px-4 py-3 text-sm text-green-200 space-y-3">
                       <div className="font-semibold text-white">Connection Successful!</div>
                       <div>Authenticated as: <span className="font-medium">{connectionData.authenticatedUser}</span></div>
-                      {salesData && (
-                        <div className="pt-2 border-t border-green-500/30 space-y-2">
-                          <div className="font-semibold text-white">Sales Orders: {salesData.count || 0}</div>
-                          {salesLoading && (
-                            <div className="text-xs text-gray-400">Loading sales data...</div>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  {salesData && salesData.data && salesData.data.length > 0 && (
-                    <div className="rounded-xl border border-blue-500/40 bg-blue-500/10 px-4 py-3 space-y-3 max-h-96 overflow-y-auto">
-                      <div className="font-semibold text-white text-sm">Sales Orders ({salesData.count})</div>
-                      <div className="space-y-2">
-                        {salesData.data.map((order) => (
-                          <div key={order.id} className="bg-white/5 rounded-lg p-3 border border-white/10">
-                            <div className="flex justify-between items-start mb-2">
-                              <div>
-                                <div className="font-medium text-white text-sm">{order.name}</div>
-                                <div className="text-xs text-gray-400 mt-1">Customer: {order.customer}</div>
-                              </div>
-                              <span className={`px-2 py-1 rounded text-xs ${
-                                order.state === 'sale' ? 'bg-green-500/20 text-green-300' :
-                                order.state === 'draft' ? 'bg-yellow-500/20 text-yellow-300' :
-                                order.state === 'cancel' ? 'bg-red-500/20 text-red-300' :
-                                'bg-gray-500/20 text-gray-300'
-                              }`}>
-                                {order.state}
-                              </span>
-                            </div>
-                            <div className="grid grid-cols-2 gap-2 text-xs text-gray-400">
-                              <div>Date: {new Date(order.date).toLocaleDateString()}</div>
-                              <div className="text-right">Total: {order.total} {order.currency}</div>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
+                      <div className="text-xs text-gray-300">Fetching sales data... The modal will close automatically.</div>
                     </div>
                   )}
 
