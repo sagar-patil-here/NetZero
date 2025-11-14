@@ -1,9 +1,0 @@
-product,quantity,uom,date,vendor,customer,type
-Limestone,3000,tonnes,25-09-2025,Local Quarry,,purchase
-Coal,250,tonnes,28-09-2025,Coal India Ltd,,purchase
-Diesel,120,liters,29-09-2025,IndianOil Corp,,purchase
-Electricity,48000,kWh,30-09-2025,State Electricity Board,,purchase
-Clinker,2000,tonnes,28-09-2025,,,production
-Cement,1950,tonnes,30-09-2025,,,production
-Cement,1800,tonnes,01-10-2025,,ACC Ltd,dispatch
-Cement,150,tonnes,01-10-2025,,Local Distributor,dispatch

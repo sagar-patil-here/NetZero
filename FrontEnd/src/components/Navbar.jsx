@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useMemo } from 'react'
 import { motion } from 'framer-motion'
 import { Link, useNavigate } from 'react-router-dom'
-import { Menu, X, Leaf, LogOut, User } from 'lucide-react'
+import { Menu, X, LogOut } from 'lucide-react'
 import { InteractiveHoverButton } from '@/components/ui/interactive-hover-button'
 import { useAuth } from '../contexts/AuthContext'
 
@@ -11,6 +11,13 @@ const Navbar = () => {
   const [showUserMenu, setShowUserMenu] = useState(false)
   const { currentUser, logout } = useAuth()
   const navigate = useNavigate()
+  const [avatarError, setAvatarError] = useState(false)
+  const userInitial = useMemo(() => {
+    const source = currentUser?.displayName || currentUser?.email || ''
+    return source.trim().charAt(0).toUpperCase() || 'U'
+  }, [currentUser])
+
+  const hasProfileImage = Boolean(currentUser?.photoURL) && !avatarError
 
   useEffect(() => {
     const handleScroll = () => {
@@ -29,6 +36,10 @@ const Navbar = () => {
     document.addEventListener('mousedown', handleClickOutside)
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [showUserMenu])
+
+  useEffect(() => {
+    setAvatarError(false)
+  }, [currentUser?.photoURL])
 
   const navItems = [
     { name: 'Features', href: '#features' },
@@ -53,6 +64,7 @@ const Navbar = () => {
     try {
       await logout()
       setShowUserMenu(false)
+      navigate('/landing', { replace: true })
     } catch (error) {
       console.error('Logout error:', error)
     }
@@ -117,15 +129,19 @@ const Navbar = () => {
                   onClick={() => setShowUserMenu(!showUserMenu)}
                   className="flex items-center gap-2 text-white hover:text-gray-300 transition-colors"
                 >
-                  <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center">
-                    {currentUser.photoURL ? (
+                  <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center overflow-hidden">
+                    {hasProfileImage ? (
                       <img
                         src={currentUser.photoURL}
                         alt="Profile"
-                        className="w-8 h-8 rounded-full"
+                        className="w-8 h-8 rounded-full object-cover"
+                        referrerPolicy="no-referrer"
+                        onError={() => setAvatarError(true)}
                       />
                     ) : (
-                      <User className="w-4 h-4" />
+                      <span className="text-sm font-semibold text-white">
+                        {userInitial}
+                      </span>
                     )}
                   </div>
                   <span className="text-sm font-medium">
@@ -204,11 +220,28 @@ const Navbar = () => {
               <div className="pt-4 border-t border-white/10 space-y-3">
                 {currentUser ? (
                   <div className="space-y-3">
-                    <div className="px-4 py-2 bg-white/5 rounded-lg">
-                      <p className="text-sm text-white font-medium">
-                        {currentUser.displayName || 'User'}
-                      </p>
-                      <p className="text-xs text-gray-400">{currentUser.email}</p>
+                    <div className="px-4 py-2 bg-white/5 rounded-lg flex items-center gap-3">
+                      <div className="w-9 h-9 rounded-full bg-white/20 flex items-center justify-center overflow-hidden">
+                        {hasProfileImage ? (
+                          <img
+                            src={currentUser.photoURL}
+                            alt="Profile"
+                            className="w-9 h-9 rounded-full object-cover"
+                            referrerPolicy="no-referrer"
+                            onError={() => setAvatarError(true)}
+                          />
+                        ) : (
+                          <span className="text-base font-semibold text-white">
+                            {userInitial}
+                          </span>
+                        )}
+                      </div>
+                      <div>
+                        <p className="text-sm text-white font-medium">
+                          {currentUser.displayName || userInitial}
+                        </p>
+                        <p className="text-xs text-gray-400">{currentUser.email}</p>
+                      </div>
                     </div>
                     <button
                       onClick={() => {

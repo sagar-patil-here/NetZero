@@ -1,18 +1,22 @@
 {
-  "name": "hackathon-backend-project",
+  "name": "netzero-backend",
   "version": "1.0.0",
-  "main": "take_para.js",
+  "description": "Backend API for NetZero Odoo integration",
+  "main": "server.js",
   "type": "module",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "node server.js",
+    "dev": "node --watch server.js"
   },
-  "keywords": [],
+  "keywords": ["odoo", "erp", "api"],
   "author": "",
   "license": "ISC",
-  "description": "",
   "dependencies": {
-    "dotenv": "^17.2.3",
-    "express": "^5.1.0",
-    "node-fetch": "^3.3.2"
+    "express": "^4.18.2",
+    "cors": "^2.8.5",
+    "dotenv": "^16.3.1",
+    "xmlrpc": "^1.3.2",
+    "axios": "^1.6.2"
   }
 }
+

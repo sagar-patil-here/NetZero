@@ -10,6 +10,7 @@ import ShaderDemo from './routes/ShaderDemo.jsx'
 import Root from './routes/Root.jsx'
 import LandingPage from './components/LandingPage.jsx'
 import Dashboard from './components/Dashboard.jsx'
+import ProtectedRoute from './routes/ProtectedRoute.jsx'
 import { AuthProvider } from './contexts/AuthContext'
 
 const router = createBrowserRouter([
@@ -19,7 +20,14 @@ const router = createBrowserRouter([
     children: [
       { index: true, element: <App /> },
       { path: 'landing', element: <LandingPage /> },
-      { path: 'dashboard', element: <Dashboard /> },
+      { 
+        path: 'dashboard', 
+        element: (
+          <ProtectedRoute>
+            <Dashboard />
+          </ProtectedRoute>
+        )
+      },
       { path: 'signin', element: <SignIn /> },
       { path: 'signup', element: <SignUp /> },
       { path: 'shader-demo', element: <ShaderDemo /> },

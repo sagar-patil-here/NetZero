@@ -1,7 +1,6 @@
 import React from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
-import AvatarPreview from '../components/AvatarPreview'
 
 const SignUp = () => {
   const [email, setEmail] = React.useState('')
@@ -70,15 +69,6 @@ const SignUp = () => {
           Create your account
         </h2>
         
-        {/* Avatar Preview */}
-        <div className="flex justify-center mb-6">
-          <div className="text-center">
-            <AvatarPreview 
-              className="w-20 h-20 mb-2"
-            />
-            <p className="text-xs text-gray-400">Your default avatar</p>
-          </div>
-        </div>
         <form onSubmit={handleSignUp} className="flex flex-col w-full gap-4">
           <div className="w-full flex flex-col gap-3">
             <input

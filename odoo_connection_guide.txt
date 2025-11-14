@@ -1,0 +1,151 @@
+✅ Step 1 — Enable Developer Mode
+
+You must enter developer mode to access technical settings.
+
+Go to:
+Settings → Developer Tools → Activate Developer Mode
+or
+Add this to your URL:
+
+?debug=1
+
+✅ Step 2 — Create an API User
+
+You can use your admin user or create a dedicated user.
+
+Path:
+Settings → Users & Companies → Users → Create
+
+Give:
+
+Name
+
+Email
+
+Allow access to modules you need (Inventory, Sales, etc.)
+
+Set a password
+
+🔹 This password will be used for API authentication.
+
+✅ Step 3 — Get Your Database Name (important for API)
+
+Go to:
+Settings → General Settings → Database
+
+Copy the Database Name → needed for API calls.
+
+Example:
+
+mycompany_db
+
+✅ Step 4 — Odoo API Authentication Options
+
+Odoo supports two API methods:
+
+🔹 Method 1: Password-based API (Most used)
+
+You use:
+
+URL
+
+DB Name
+
+Username (email)
+
+Password
+
+Example (XML-RPC):
+
+import xmlrpc.client
+
+url = "https://your-odoo.com"
+db = "mycompany_db"
+username = "apiuser@domain.com"
+password = "YourPassword"
+
+common = xmlrpc.client.ServerProxy(f"{url}/xmlrpc/2/common")
+uid = common.authenticate(db, username, password, {})
+
+
+This is standard for Odoo Community Edition.
+
+🔹 Method 2: Odoo API Key (Enterprise & 2FA setups)
+
+If your Odoo supports API keys:
+
+Step: Generate API Key
+
+Settings → Account Security → API Keys → New
+
+Choose:
+
+Name (e.g., “Website Integration”)
+
+Scope: Generic
+
+Save → Copy the generated key
+
+Use in headers:
+Authorization: Bearer <API_KEY>
+
+⚠️ Important:
+
+Odoo Community Edition does NOT provide API keys by default,
+but you can install a module called:
+
+➡️ “base_rest” or “auth_api_key”
+(available on Odoo Apps Store & GitHub)
+to enable API keys like ERPNext.
+
+If you want, I can give installation commands.
+
+✅ Step 5 — Make Your First API Call (JSON-RPC)
+
+Here’s the cleanest format:
+
+POST → /jsonrpc
+{
+  "jsonrpc": "2.0",
+  "method": "call",
+  "params": {
+    "service": "object",
+    "method": "execute_kw",
+    "args": [
+      "mycompany_db",
+      "<uid>",
+      "<password>",
+      "res.partner",
+      "search_read",
+      [[]],
+      {"fields": ["name", "email"]}
+    ]
+  }
+}
+
+✅ Step 6 — Test Using Postman
+
+Set method: POST
+
+URL:
+
+https://yourdomain.com/jsonrpc
+
+
+Body: Raw → JSON
+
+Provide DB, username, password.
+
+This will return all customers.
+
+Summary (super quick)
+
+Enable Developer Mode
+
+Create user → get username & password
+
+Find DB name
+
+Use XML-RPC or JSON-RPC to authenticate
+
+If needed, install module to generate API Keys
