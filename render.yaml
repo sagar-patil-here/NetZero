@@ -3,7 +3,7 @@ services:
     name: netzero-backend
     env: node
     rootDir: backend
-    buildCommand: rm -rf node_modules && npm install
+    buildCommand: npm ci || (rm -rf node_modules package-lock.json && npm install)
     startCommand: npm start
     envVars:
       - key: NODE_ENV

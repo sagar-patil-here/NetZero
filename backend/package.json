@@ -6,7 +6,8 @@
   "type": "module",
   "scripts": {
     "start": "node server.js",
-    "dev": "node --watch server.js"
+    "dev": "node --watch server.js",
+    "postinstall": "node --input-type=commonjs -e \"try { require('express/lib/router'); console.log('✓ Express router verified'); } catch(e) { console.error('✗ Express installation incomplete:', e.message); process.exit(1); }\""
   },
   "keywords": [
     "odoo",
