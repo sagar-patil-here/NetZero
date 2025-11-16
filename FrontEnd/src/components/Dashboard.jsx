@@ -1,10 +1,10 @@
 import React from 'react'
 import { motion } from 'framer-motion'
 import { useAuth } from '../contexts/AuthContext'
-import { Mail, Calendar, TrendingUp, Camera, X, RefreshCw } from 'lucide-react'
+import { Mail, Calendar, TrendingUp, Camera, X } from 'lucide-react'
 import Navbar from './Navbar'
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001'
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5003'
 
 const Dashboard = () => {
   const { currentUser, assignAvatar, loading } = useAuth()
@@ -16,18 +16,50 @@ const Dashboard = () => {
   const [selectedApiMethod, setSelectedApiMethod] = React.useState(null)
   const [apiFormData, setApiFormData] = React.useState({
     url: '',
+    dbName: '',
     apiKey: '',
     secret: '',
     username: '',
-    password: '',
-    dbName: ''
+    password: ''
   })
   const [connectionLoading, setConnectionLoading] = React.useState(false)
   const [connectionError, setConnectionError] = React.useState('')
   const [connectionData, setConnectionData] = React.useState(null)
-  const [salesData, setSalesData] = React.useState(null)
-  const [salesLoading, setSalesLoading] = React.useState(false)
-  const [odooCredentials, setOdooCredentials] = React.useState(null)
+  const [dashboardData, setDashboardData] = React.useState(null)
+
+  React.useEffect(() => {
+    if (typeof window === 'undefined') return
+    const stored = window.localStorage.getItem('netzeroConnectionData')
+    if (stored) {
+      try {
+        setDashboardData(JSON.parse(stored))
+      } catch (error) {
+        console.error('Failed to parse stored connection data', error)
+        window.localStorage.removeItem('netzeroConnectionData')
+      }
+    }
+  }, [])
+
+  React.useEffect(() => {
+    if (typeof window === 'undefined') return
+    if (dashboardData) {
+      window.localStorage.setItem('netzeroConnectionData', JSON.stringify(dashboardData))
+    } else {
+      window.localStorage.removeItem('netzeroConnectionData')
+    }
+  }, [dashboardData])
+
+  const saveConnectionData = React.useCallback((updater) => {
+    setConnectionData(prev => {
+      const nextValue = typeof updater === 'function' ? updater(prev) : updater
+      if (!nextValue) {
+        setDashboardData(null)
+        return nextValue
+      }
+      setDashboardData(nextValue)
+      return nextValue
+    })
+  }, [])
 
   const userInitial = React.useMemo(() => {
     const source = currentUser?.displayName || currentUser?.email || ''
@@ -44,7 +76,7 @@ const Dashboard = () => {
     setSelectedSourceType(null)
     setSelectedErpSystem(null)
     setSelectedApiMethod(null)
-    setApiFormData({ url: '', apiKey: '', secret: '', username: '', password: '', dbName: '' })
+    setApiFormData({ url: '', dbName: '', apiKey: '', secret: '', username: '', password: '' })
     setIsConnectModalOpen(true)
   }
 
@@ -53,9 +85,9 @@ const Dashboard = () => {
     setSelectedSourceType(null)
     setSelectedErpSystem(null)
     setSelectedApiMethod(null)
-    setApiFormData({ url: '', apiKey: '', secret: '', username: '', password: '', dbName: '' })
+    setApiFormData({ url: '', dbName: '', apiKey: '', secret: '', username: '', password: '' })
     setConnectionError('')
-    // Don't clear connectionData and salesData - keep them for dashboard display
+    setConnectionData(null)
     setConnectionLoading(false)
   }
 
@@ -63,7 +95,7 @@ const Dashboard = () => {
     setSelectedSourceType(type)
     setSelectedErpSystem(null)
     setSelectedApiMethod(null)
-    setApiFormData({ url: '', apiKey: '', secret: '', username: '', password: '', dbName: '' })
+    setApiFormData({ url: '', dbName: '', apiKey: '', secret: '', username: '', password: '' })
     setConnectionError('')
     setConnectionData(null)
   }
@@ -71,14 +103,14 @@ const Dashboard = () => {
   const handleErpSystemSelect = (erpSystem) => {
     setSelectedErpSystem(erpSystem)
     setSelectedApiMethod(null)
-    setApiFormData({ url: '', apiKey: '', secret: '', username: '', password: '', dbName: '' })
+    setApiFormData({ url: '', dbName: '', apiKey: '', secret: '', username: '', password: '' })
     setConnectionError('')
     setConnectionData(null)
   }
 
   const handleApiMethodSelect = (method) => {
     setSelectedApiMethod(method)
-    setApiFormData({ url: '', apiKey: '', secret: '', username: '', password: '', dbName: '' })
+    setApiFormData({ url: '', dbName: '', apiKey: '', secret: '', username: '', password: '' })
     setConnectionError('')
     setConnectionData(null)
   }
@@ -95,10 +127,9 @@ const Dashboard = () => {
     setConnectionLoading(true)
     setConnectionError('')
     setConnectionData(null)
-    setSalesData(null)
 
     try {
-      // Handle Odoo connection differently
+      // Handle Odoo connection specifically
       if (selectedErpSystem === 'ODOO') {
         if (!apiFormData.url || !apiFormData.dbName || !apiFormData.username || !apiFormData.password) {
           setConnectionError('Please fill in all required fields: URL, DB Name, Username, and Password.')
@@ -127,32 +158,158 @@ const Dashboard = () => {
         }
 
         if (data.success) {
-          setConnectionData(data)
-          // Store credentials for future use
-          const credentials = {
-            url: apiFormData.url,
-            dbName: apiFormData.dbName,
-            username: apiFormData.username,
-            password: apiFormData.password
+          const connectionPayload = {
+            ...data,
+            source: 'ODOO',
+            connectedAt: new Date().toISOString(),
+            connectionMeta: {
+              url: apiFormData.url,
+              dbName: apiFormData.dbName,
+              username: apiFormData.username
+            }
           }
-          setOdooCredentials(credentials)
-          // Automatically fetch sales data after successful connection
-          await fetchSalesData(credentials)
-          // Close modal after successful connection and data fetch
-          setTimeout(() => {
-            closeConnectModal()
-          }, 1000)
+          saveConnectionData(connectionPayload)
+          
+          // Fetch sales orders after successful connection
+          try {
+            const salesResponse = await fetch(`${API_BASE_URL}/api/odoo/sales-orders`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                url: apiFormData.url,
+                dbName: apiFormData.dbName,
+                username: apiFormData.username,
+                password: apiFormData.password,
+                limit: 10,
+                offset: 0,
+              }),
+            })
+
+            const salesData = await salesResponse.json()
+            if (salesData.success) {
+              saveConnectionData(prev => {
+                if (!prev) return prev
+                return {
+                  ...prev,
+                  salesOrders: salesData.data,
+                  salesCount: salesData.count
+                }
+              })
+            }
+          } catch (salesError) {
+            console.error('Error fetching sales orders:', salesError)
+            // Don't fail the connection if sales fetch fails
+          }
+        } else {
+          throw new Error(data.error || 'Connection failed')
+        }
+      } else if (selectedErpSystem === 'ERPNEXT') {
+        // Handle ERPNext - only username and password
+        if (!apiFormData.url || !apiFormData.username || !apiFormData.password) {
+          setConnectionError('Please fill in all required fields: Base URL, Username, and Password.')
+          setConnectionLoading(false)
+          return
+        }
+
+        const response = await fetch(`${API_BASE_URL}/api/erpnext/connect`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            baseUrl: apiFormData.url,
+            username: apiFormData.username,
+            password: apiFormData.password,
+          }),
+        })
+
+        const data = await response.json()
+
+        if (!response.ok) {
+          throw new Error(data.error || 'Failed to connect to ERPNext')
+        }
+
+        if (data.success) {
+          const connectionPayload = {
+            ...data,
+            source: 'ERPNEXT',
+            connectedAt: new Date().toISOString(),
+            connectionMeta: {
+              baseUrl: apiFormData.url,
+              username: apiFormData.username
+            }
+          }
+          saveConnectionData(connectionPayload)
+          
+          // Fetch sales orders and purchase orders after successful connection
+          try {
+            // Fetch sales orders
+            const salesResponse = await fetch(`${API_BASE_URL}/api/erpnext/sales-orders`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                baseUrl: apiFormData.url,
+                username: apiFormData.username,
+                password: apiFormData.password,
+                limit: 20,
+                offset: 0,
+              }),
+            })
+
+            const salesData = await salesResponse.json()
+            
+            // Fetch purchase orders
+            const purchaseResponse = await fetch(`${API_BASE_URL}/api/erpnext/purchase-orders`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                baseUrl: apiFormData.url,
+                username: apiFormData.username,
+                password: apiFormData.password,
+                limit: 20,
+                offset: 0,
+              }),
+            })
+
+            const purchaseData = await purchaseResponse.json()
+
+            // Update connection data with fetched orders
+            saveConnectionData(prev => {
+              if (!prev) return prev
+              return {
+                ...prev,
+                salesOrders: salesData.success ? salesData.data : [],
+                salesCount: salesData.success ? salesData.count : 0,
+                purchaseOrders: purchaseData.success ? purchaseData.data : [],
+                purchaseCount: purchaseData.success ? purchaseData.count : 0,
+                summary: {
+                  totalSalesOrders: salesData.success ? salesData.count : 0,
+                  totalPurchaseOrders: purchaseData.success ? purchaseData.count : 0,
+                  totalItems: 0,
+                  totalCustomers: 0,
+                  totalSuppliers: 0,
+                }
+              }
+            })
+          } catch (fetchError) {
+            console.error('Error fetching orders:', fetchError)
+            // Don't fail the connection if fetch fails
+          }
         } else {
           throw new Error(data.error || 'Connection failed')
         }
       } else {
-        // Handle other ERP systems (ERPNext, etc.)
+        // Handle other ERP systems (NetZero ERP, etc.)
         let secret = ''
         
-        // Prepare secret based on connection method
         if (selectedApiMethod === 'URL') {
-          // For URL only, we might not need secret, but ERPNext requires it
-          setConnectionError('ERPNext requires authentication. Please use Key-Secret or Username & Password.')
+          setConnectionError('This ERP system requires authentication. Please use Key-Secret or Username & Password.')
           setConnectionLoading(false)
           return
         } else if (selectedApiMethod === 'URL_SECRET') {
@@ -163,8 +320,6 @@ const Dashboard = () => {
           }
           secret = `${apiFormData.apiKey}:${apiFormData.secret}`
         } else if (selectedApiMethod === 'USER_PASS') {
-          // For username/password, we need to format it as api_key:api_secret
-          // In ERPNext, this would typically be handled differently, but for now we'll use the format
           secret = `${apiFormData.username}:${apiFormData.password}`
         }
 
@@ -202,7 +357,6 @@ const Dashboard = () => {
     } catch (error) {
       console.error('Connection error:', error)
       
-      // Handle different types of errors
       if (error.message === 'Failed to fetch' || error.name === 'TypeError') {
         setConnectionError(
           'Cannot connect to backend server. Please ensure:\n' +
@@ -218,46 +372,6 @@ const Dashboard = () => {
     }
   }
 
-  const fetchSalesData = async (credentials = null) => {
-    const creds = credentials || odooCredentials
-    if (!creds) return
-
-    setSalesLoading(true)
-    try {
-      const response = await fetch(`${API_BASE_URL}/api/odoo/sales`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          url: creds.url,
-          dbName: creds.dbName,
-          username: creds.username,
-          password: creds.password,
-          limit: 100,
-          offset: 0,
-        }),
-      })
-
-      const data = await response.json()
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to fetch sales data')
-      }
-
-      if (data.success) {
-        setSalesData(data)
-      } else {
-        throw new Error(data.error || 'Failed to fetch sales data')
-      }
-    } catch (error) {
-      console.error('Fetch sales error:', error)
-      // Don't set connection error here, just log it
-    } finally {
-      setSalesLoading(false)
-    }
-  }
-
   const handleNetzeroErpClick = () => {
     setIsErpModalOpen(true)
   }
@@ -265,6 +379,54 @@ const Dashboard = () => {
   const closeErpModal = () => {
     setIsErpModalOpen(false)
   }
+
+  const formatNumber = (value) => {
+    const num = Number(value || 0)
+    if (Number.isNaN(num)) return '0'
+    return num.toLocaleString()
+  }
+
+  const formatAmount = (value) => {
+    const num = Number(value)
+    if (Number.isNaN(num)) return '—'
+    return num.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+  }
+
+  const formatDate = (value) => {
+    if (!value) return 'N/A'
+    const parsed = new Date(value)
+    if (Number.isNaN(parsed.getTime())) return 'N/A'
+    return parsed.toLocaleDateString()
+  }
+
+  const activeData = dashboardData
+  const isOdooConnection = activeData?.source === 'ODOO'
+  const isERPNextConnection = activeData?.source === 'ERPNEXT'
+  const salesOrdersCount =
+    activeData?.salesCount ??
+    activeData?.summary?.totalSalesOrders ??
+    activeData?.summary?.sales_order ??
+    (activeData?.salesOrders?.length ?? 0)
+  const purchaseOrdersCount =
+    activeData?.purchaseCount ??
+    activeData?.summary?.totalPurchaseOrders ??
+    activeData?.summary?.purchase_order ??
+    (activeData?.purchaseOrders?.length ?? 0)
+  const inferredItemCountFromOdoo = activeData?.salesOrders
+    ? activeData.salesOrders.reduce((total, order) => {
+        const lines = Array.isArray(order.order_line) ? order.order_line.length : 0
+        return total + lines
+      }, 0)
+    : 0
+  const itemsCount =
+    activeData?.summary?.totalItems ??
+    activeData?.summary?.item ??
+    inferredItemCountFromOdoo
+  const recentSalesOrders = activeData?.salesOrders ? activeData.salesOrders.slice(0, 8) : []
+  const recentPurchaseOrders = activeData?.purchaseOrders ? activeData.purchaseOrders.slice(0, 8) : []
+  const connectedAtLabel = activeData?.connectedAt
+    ? new Date(activeData.connectedAt).toLocaleString()
+    : null
 
   if (loading) {
     return (
@@ -307,6 +469,215 @@ const Dashboard = () => {
               Your carbon tracking dashboard
             </p>
           </motion.div>
+
+          {dashboardData && (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.6, delay: 0.35 }}
+              className="bg-white/5 border border-white/10 rounded-2xl p-6 md:p-8 mb-10"
+            >
+              <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                <div>
+                  <p className="text-xs uppercase tracking-widest text-gray-400">Connected Source</p>
+                  <h3 className="text-2xl font-semibold text-white mt-1">
+                    {isOdooConnection ? 'Odoo' : isERPNextConnection ? 'ERPNext' : 'Data Source'}
+                  </h3>
+                  {dashboardData.authenticatedUser && (
+                    <p className="text-gray-400 text-sm">
+                      Authenticated as <span className="text-white">{dashboardData.authenticatedUser}</span>
+                    </p>
+                  )}
+                </div>
+                <div className="text-sm text-gray-400">
+                  {connectedAtLabel && <p>Connected on {connectedAtLabel}</p>}
+                  {dashboardData.connectionMeta?.url && (
+                    <p className="truncate max-w-xs">Instance: {dashboardData.connectionMeta.url}</p>
+                  )}
+                </div>
+              </div>
+
+              {dashboardData.summary && (
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6">
+                  <div className="rounded-xl border border-white/10 bg-white/5 p-4">
+                    <p className="text-xs text-gray-400 uppercase">Customers</p>
+                    <p className="text-2xl font-bold text-white mt-1">
+                      {formatNumber(
+                        dashboardData.summary.totalCustomers ?? dashboardData.summary.customer ?? 0
+                      )}
+                    </p>
+                  </div>
+                  <div className="rounded-xl border border-white/10 bg-white/5 p-4">
+                    <p className="text-xs text-gray-400 uppercase">Suppliers</p>
+                    <p className="text-2xl font-bold text-white mt-1">
+                      {formatNumber(
+                        dashboardData.summary.totalSuppliers ?? dashboardData.summary.supplier ?? 0
+                      )}
+                    </p>
+                  </div>
+                  <div className="rounded-xl border border-white/10 bg-white/5 p-4">
+                    <p className="text-xs text-gray-400 uppercase">Items</p>
+                    <p className="text-2xl font-bold text-white mt-1">
+                      {formatNumber(
+                        dashboardData.summary.totalItems ?? dashboardData.summary.item ?? itemsCount
+                      )}
+                    </p>
+                  </div>
+                </div>
+              )}
+
+            </motion.div>
+          )}
+
+          {/* Order Cards - Sales and Purchase Orders */}
+          {(recentSalesOrders.length > 0 || recentPurchaseOrders.length > 0) && (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.6, delay: 0.35 }}
+              className="mb-8"
+            >
+              {recentSalesOrders.length > 0 && (
+                <div className="mb-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <div>
+                      <h3 className="text-xl font-semibold text-white">Sales Orders</h3>
+                      <p className="text-sm text-gray-400">
+                        Showing {recentSalesOrders.length} of {formatNumber(salesOrdersCount)} orders
+                      </p>
+                    </div>
+                    <div className="text-xs uppercase tracking-widest text-gray-500">
+                      {isOdooConnection ? 'Odoo' : 'ERPNext'}
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                    {recentSalesOrders.map((order, idx) => {
+                      // Handle ERPNext format (order_name, item_name, quantity, date)
+                      const isERPNextFormat = order.order_name && order.item_name
+                      const orderName = isERPNextFormat ? order.order_name : (order.name || `Order #${idx + 1}`)
+                      const orderDate = isERPNextFormat ? order.date : (order.date_order || order.posting_date || order.transaction_date || order.date)
+                      
+                      return (
+                        <div
+                          key={`sales-${order.order_name || order.name || order.id || idx}`}
+                          className="rounded-xl border border-white/10 bg-white/5 p-4 space-y-2 hover:bg-white/10 transition-colors"
+                        >
+                          <div className="flex items-center justify-between">
+                            <p className="text-white font-medium text-sm truncate">{orderName}</p>
+                            {!isERPNextFormat && (
+                              <span className="text-xs px-2 py-0.5 rounded-full bg-white/10 text-gray-200 capitalize ml-2">
+                                {order.state || order.status || 'pending'}
+                              </span>
+                            )}
+                          </div>
+                          {isERPNextFormat && (
+                            <div className="text-xs text-gray-400">
+                              Item: <span className="text-white">{order.item_name}</span>
+                            </div>
+                          )}
+                          <div className="flex items-center justify-between text-xs text-gray-400">
+                            <span>Date</span>
+                            <span>{formatDate(orderDate)}</span>
+                          </div>
+                          {isERPNextFormat ? (
+                            <div className="flex items-center justify-between text-xs text-gray-400">
+                              <span>Quantity</span>
+                              <span className="text-white font-semibold">{order.quantity || 0}</span>
+                            </div>
+                          ) : (
+                            <>
+                              <div className="flex items-center justify-between text-xs text-gray-400">
+                                <span>Amount</span>
+                                <span className="text-white font-semibold">
+                                  {order.amount_total != null ? `₹${formatAmount(order.amount_total)}` : '—'}
+                                </span>
+                              </div>
+                              <div className="flex items-center justify-between text-xs text-gray-400">
+                                <span>Items</span>
+                                <span className="text-white font-semibold">
+                                  {Array.isArray(order.order_line) ? order.order_line.length : order.items?.length || 0}
+                                </span>
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {recentPurchaseOrders.length > 0 && (
+                <div>
+                  <div className="flex items-center justify-between mb-4">
+                    <div>
+                      <h3 className="text-xl font-semibold text-white">Purchase Orders</h3>
+                      <p className="text-sm text-gray-400">
+                        Showing {recentPurchaseOrders.length} of {formatNumber(purchaseOrdersCount)} orders
+                      </p>
+                    </div>
+                    <div className="text-xs uppercase tracking-widest text-gray-500">
+                      {isOdooConnection ? 'Odoo' : 'ERPNext'}
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                    {recentPurchaseOrders.map((order, idx) => {
+                      // Handle ERPNext format (order_name, item_name, quantity, date)
+                      const isERPNextFormat = order.order_name && order.item_name
+                      const orderName = isERPNextFormat ? order.order_name : (order.name || `Order #${idx + 1}`)
+                      const orderDate = isERPNextFormat ? order.date : (order.date_order || order.posting_date || order.transaction_date || order.date)
+                      
+                      return (
+                        <div
+                          key={`purchase-${order.order_name || order.name || order.id || idx}`}
+                          className="rounded-xl border border-white/10 bg-white/5 p-4 space-y-2 hover:bg-white/10 transition-colors"
+                        >
+                          <div className="flex items-center justify-between">
+                            <p className="text-white font-medium text-sm truncate">{orderName}</p>
+                            {!isERPNextFormat && (
+                              <span className="text-xs px-2 py-0.5 rounded-full bg-white/10 text-gray-200 capitalize ml-2">
+                                {order.state || order.status || 'pending'}
+                              </span>
+                            )}
+                          </div>
+                          {isERPNextFormat && (
+                            <div className="text-xs text-gray-400">
+                              Item: <span className="text-white">{order.item_name}</span>
+                            </div>
+                          )}
+                          <div className="flex items-center justify-between text-xs text-gray-400">
+                            <span>Date</span>
+                            <span>{formatDate(orderDate)}</span>
+                          </div>
+                          {isERPNextFormat ? (
+                            <div className="flex items-center justify-between text-xs text-gray-400">
+                              <span>Quantity</span>
+                              <span className="text-white font-semibold">{order.quantity || 0}</span>
+                            </div>
+                          ) : (
+                            <>
+                              <div className="flex items-center justify-between text-xs text-gray-400">
+                                <span>Amount</span>
+                                <span className="text-white font-semibold">
+                                  {order.amount_total != null ? `₹${formatAmount(order.amount_total)}` : '—'}
+                                </span>
+                              </div>
+                              <div className="flex items-center justify-between text-xs text-gray-400">
+                                <span>Items</span>
+                                <span className="text-white font-semibold">
+                                  {Array.isArray(order.order_line) ? order.order_line.length : order.items?.length || 0}
+                                </span>
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+            </motion.div>
+          )}
 
           {/* User Info Card */}
           <motion.div
@@ -382,8 +753,8 @@ const Dashboard = () => {
                   <TrendingUp className="w-6 h-6 text-green-400" />
                 </div>
                 <div>
-                  <p className="text-2xl font-bold text-white">0</p>
-                  <p className="text-sm text-gray-400">Carbon Footprint (kg CO₂)</p>
+                  <p className="text-2xl font-bold text-white">{formatNumber(salesOrdersCount)}</p>
+                  <p className="text-sm text-gray-400">Sales Orders Imported</p>
                 </div>
               </div>
             </div>
@@ -394,8 +765,8 @@ const Dashboard = () => {
                   <TrendingUp className="w-6 h-6 text-blue-400" />
                 </div>
                 <div>
-                  <p className="text-2xl font-bold text-white">{salesData?.count || 0}</p>
-                  <p className="text-sm text-gray-400">Sales Orders</p>
+                  <p className="text-2xl font-bold text-white">{formatNumber(purchaseOrdersCount)}</p>
+                  <p className="text-sm text-gray-400">Purchase Orders Imported</p>
                 </div>
               </div>
             </div>
@@ -406,91 +777,12 @@ const Dashboard = () => {
                   <TrendingUp className="w-6 h-6 text-purple-400" />
                 </div>
                 <div>
-                  <p className="text-2xl font-bold text-white">0%</p>
-                  <p className="text-sm text-gray-400">Reduction Achieved</p>
+                  <p className="text-2xl font-bold text-white">{formatNumber(itemsCount)}</p>
+                  <p className="text-sm text-gray-400">Items Synced</p>
                 </div>
               </div>
             </div>
           </motion.div>
-
-          {/* Odoo Sales Data Section */}
-          {salesData && salesData.data && salesData.data.length > 0 && (
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.6, delay: 0.5 }}
-              className="bg-gradient-to-r from-white/5 to-white/10 backdrop-blur-sm rounded-2xl p-8 border border-white/10 mb-8"
-            >
-              <div className="flex items-center justify-between mb-6">
-                <div>
-                  <h3 className="text-2xl font-bold text-white mb-2">Odoo Sales Orders</h3>
-                  <p className="text-gray-400 text-sm">
-                    Connected to: {connectionData?.authenticatedUser || 'Odoo'}
-                  </p>
-                </div>
-                <button
-                  onClick={() => fetchSalesData()}
-                  disabled={salesLoading}
-                  className="flex items-center gap-2 px-4 py-2 bg-blue-500/20 hover:bg-blue-500/30 text-blue-300 rounded-lg transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  <RefreshCw className={`w-4 h-4 ${salesLoading ? 'animate-spin' : ''}`} />
-                  {salesLoading ? 'Refreshing...' : 'Refresh'}
-                </button>
-              </div>
-              
-              {salesLoading && !salesData.data && (
-                <div className="text-center py-8 text-gray-400">Loading sales data...</div>
-              )}
-              
-              <div className="space-y-3 max-h-96 overflow-y-auto">
-                {salesData.data.map((order) => (
-                  <div key={order.id} className="bg-white/5 rounded-lg p-4 border border-white/10 hover:bg-white/10 transition-colors">
-                    <div className="flex justify-between items-start mb-3">
-                      <div className="flex-1">
-                        <div className="font-semibold text-white text-lg mb-1">{order.name}</div>
-                        <div className="text-sm text-gray-400">Customer: {order.customer}</div>
-                        {order.reference && (
-                          <div className="text-xs text-gray-500 mt-1">Reference: {order.reference}</div>
-                        )}
-                      </div>
-                      <span className={`px-3 py-1 rounded-full text-xs font-medium ${
-                        order.state === 'sale' ? 'bg-green-500/20 text-green-300 border border-green-500/30' :
-                        order.state === 'draft' ? 'bg-yellow-500/20 text-yellow-300 border border-yellow-500/30' :
-                        order.state === 'cancel' ? 'bg-red-500/20 text-red-300 border border-red-500/30' :
-                        'bg-gray-500/20 text-gray-300 border border-gray-500/30'
-                      }`}>
-                        {order.state?.toUpperCase() || 'UNKNOWN'}
-                      </span>
-                    </div>
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-                      <div>
-                        <div className="text-gray-400 text-xs mb-1">Date</div>
-                        <div className="text-white">{new Date(order.date).toLocaleDateString()}</div>
-                      </div>
-                      <div>
-                        <div className="text-gray-400 text-xs mb-1">Quantity</div>
-                        <div className="text-white font-semibold">{order.quantity || 0} units</div>
-                      </div>
-                      <div>
-                        <div className="text-gray-400 text-xs mb-1">Salesperson</div>
-                        <div className="text-white">{order.salesperson}</div>
-                      </div>
-                      <div>
-                        <div className="text-gray-400 text-xs mb-1">Order Lines</div>
-                        <div className="text-white">{order.lineCount} lines</div>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-              
-              {salesData.count > salesData.data.length && (
-                <div className="mt-4 text-center text-sm text-gray-400">
-                  Showing {salesData.data.length} of {salesData.count} orders
-                </div>
-              )}
-            </motion.div>
-          )}
 
           {/* Getting Started */}
           <motion.div
@@ -508,7 +800,7 @@ const Dashboard = () => {
                 onClick={openConnectModal}
                 className="bg-white/10 hover:bg-white/20 text-white px-6 py-3 rounded-lg transition-colors"
               >
-                {odooCredentials ? 'Reconnect Data Source' : 'Connect Data Source'}
+                Connect Data Source
               </button>
               <button
                 onClick={handleNetzeroErpClick}
@@ -646,7 +938,7 @@ const Dashboard = () => {
               </div>
             )}
 
-            {selectedSourceType === 'API' && selectedErpSystem && selectedErpSystem !== 'ODOO' && !selectedApiMethod && (
+            {selectedSourceType === 'API' && selectedErpSystem && selectedErpSystem !== 'ODOO' && selectedErpSystem !== 'ERPNEXT' && !selectedApiMethod && (
               <div className="space-y-6">
                 <div className="flex items-center justify-between">
                   <div>
@@ -697,6 +989,120 @@ const Dashboard = () => {
               </div>
             )}
 
+            {selectedSourceType === 'API' && selectedErpSystem === 'ERPNEXT' && (
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="space-y-6"
+              >
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="text-xl font-semibold text-white">
+                      ERPNext Connection Details
+                    </h3>
+                    <p className="text-sm text-gray-400 mt-1">
+                      Enter your ERPNext credentials to connect.
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => handleErpSystemSelect(null)}
+                    className="text-sm text-gray-300 hover:text-white transition"
+                  >
+                    Back
+                  </button>
+                </div>
+
+                <div className="space-y-3">
+                  <div className="rounded-xl border border-blue-500/40 bg-blue-500/10 px-4 py-3 text-sm text-blue-200">
+                    Selected ERP:{' '}
+                    <span className="font-semibold text-white">ERPNext</span>
+                  </div>
+                </div>
+
+                <motion.div
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="space-y-4 pt-4 border-t border-white/10"
+                >
+                  {connectionError && (
+                    <div className="rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-300 whitespace-pre-line">
+                      {connectionError}
+                    </div>
+                  )}
+
+                  {connectionData && (
+                    <div className="rounded-xl border border-green-500/40 bg-green-500/10 px-4 py-3 text-sm text-green-200">
+                      <div className="font-semibold text-white">Connection Successful!</div>
+                      <div className="mt-1">Authenticated as: <span className="font-medium">{connectionData.authenticatedUser}</span></div>
+                      <div className="mt-2 text-xs text-green-300">Data is being fetched and will appear on your dashboard shortly.</div>
+                    </div>
+                  )}
+
+                  <form onSubmit={handleApiConnect} className="space-y-4">
+                    <div className="space-y-2">
+                      <label className="text-sm text-gray-300">
+                        ERPNext Base URL <span className="text-red-400">*</span>
+                      </label>
+                      <input
+                        type="url"
+                        value={apiFormData.url}
+                        onChange={handleApiFormChange('url')}
+                        placeholder="https://your-erpnext-instance.com"
+                        className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder-gray-500 focus:border-white/40 focus:outline-none"
+                        required
+                      />
+                      <p className="text-xs text-gray-500 mt-1">
+                        Your ERPNext instance base URL (e.g., https://demo.erpnext.com)
+                      </p>
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-sm text-gray-300">
+                        Username (Email) <span className="text-red-400">*</span>
+                      </label>
+                      <input
+                        type="email"
+                        value={apiFormData.username}
+                        onChange={handleApiFormChange('username')}
+                        placeholder="user@example.com"
+                        className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder-gray-500 focus:border-white/40 focus:outline-none"
+                        required
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-sm text-gray-300">
+                        Password <span className="text-red-400">*</span>
+                      </label>
+                      <input
+                        type="password"
+                        value={apiFormData.password}
+                        onChange={handleApiFormChange('password')}
+                        placeholder="Enter your password"
+                        className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder-gray-500 focus:border-white/40 focus:outline-none"
+                        required
+                      />
+                    </div>
+
+                    <div className="flex gap-3 pt-2">
+                      <button
+                        type="button"
+                        onClick={() => handleErpSystemSelect(null)}
+                        className="flex-1 px-4 py-3 rounded-lg border border-white/10 bg-white/5 text-white hover:bg-white/10 transition-colors text-sm font-medium"
+                      >
+                        Back
+                      </button>
+                      <button
+                        type="submit"
+                        disabled={connectionLoading}
+                        className="flex-1 px-4 py-3 rounded-lg bg-white/10 hover:bg-white/20 text-white transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {connectionLoading ? 'Connecting...' : 'Connect'}
+                      </button>
+                    </div>
+                  </form>
+                </motion.div>
+              </motion.div>
+            )}
+
             {selectedSourceType === 'API' && selectedErpSystem === 'ODOO' && (
               <motion.div
                 initial={{ opacity: 0, y: 10 }}
@@ -720,9 +1126,11 @@ const Dashboard = () => {
                   </button>
                 </div>
 
-                <div className="rounded-xl border border-blue-500/40 bg-blue-500/10 px-4 py-3 text-sm text-blue-200">
-                  Selected ERP:{' '}
-                  <span className="font-semibold text-white">Odoo</span>
+                <div className="space-y-3">
+                  <div className="rounded-xl border border-blue-500/40 bg-blue-500/10 px-4 py-3 text-sm text-blue-200">
+                    Selected ERP:{' '}
+                    <span className="font-semibold text-white">Odoo</span>
+                  </div>
                 </div>
 
                 <motion.div
@@ -737,10 +1145,13 @@ const Dashboard = () => {
                   )}
 
                   {connectionData && (
-                    <div className="rounded-xl border border-green-500/40 bg-green-500/10 px-4 py-3 text-sm text-green-200 space-y-3">
+                    <div className="rounded-xl border border-green-500/40 bg-green-500/10 px-4 py-3 text-sm text-green-200">
                       <div className="font-semibold text-white">Connection Successful!</div>
-                      <div>Authenticated as: <span className="font-medium">{connectionData.authenticatedUser}</span></div>
-                      <div className="text-xs text-gray-300">Fetching sales data... The modal will close automatically.</div>
+                      <div className="mt-1">Authenticated as: <span className="font-medium">{connectionData.authenticatedUser}</span></div>
+                      {connectionData.dbName && (
+                        <div className="mt-1">Database: <span className="font-medium">{connectionData.dbName}</span></div>
+                      )}
+                      <div className="mt-2 text-xs text-green-300">Data is being fetched and will appear on your dashboard shortly.</div>
                     </div>
                   )}
 
@@ -785,13 +1196,10 @@ const Dashboard = () => {
                         type="email"
                         value={apiFormData.username}
                         onChange={handleApiFormChange('username')}
-                        placeholder="apiuser@domain.com"
+                        placeholder="user@example.com"
                         className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder-gray-500 focus:border-white/40 focus:outline-none"
                         required
                       />
-                      <p className="text-xs text-gray-500 mt-1">
-                        Your Odoo user email address
-                      </p>
                     </div>
                     <div className="space-y-2">
                       <label className="text-sm text-gray-300">
@@ -805,9 +1213,6 @@ const Dashboard = () => {
                         className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder-gray-500 focus:border-white/40 focus:outline-none"
                         required
                       />
-                      <p className="text-xs text-gray-500 mt-1">
-                        Your Odoo user password
-                      </p>
                     </div>
 
                     <div className="flex gap-3 pt-2">
@@ -831,7 +1236,7 @@ const Dashboard = () => {
               </motion.div>
             )}
 
-            {selectedSourceType === 'API' && selectedErpSystem && selectedErpSystem !== 'ODOO' && selectedApiMethod && (
+            {selectedSourceType === 'API' && selectedErpSystem && selectedErpSystem !== 'ODOO' && selectedErpSystem !== 'ERPNEXT' && selectedApiMethod && (
               <motion.div
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -888,137 +1293,58 @@ const Dashboard = () => {
                     <div className="rounded-xl border border-green-500/40 bg-green-500/10 px-4 py-3 text-sm text-green-200 space-y-3">
                       <div className="font-semibold text-white">Connection Successful!</div>
                       <div>Authenticated as: <span className="font-medium">{connectionData.authenticatedUser}</span></div>
-                      {selectedErpSystem === 'ODOO' && salesData && (
-                        <div className="pt-2 border-t border-green-500/30 space-y-2">
-                          <div className="font-semibold text-white">Sales Orders: {salesData.count || 0}</div>
-                          {salesLoading && (
-                            <div className="text-xs text-gray-400">Loading sales data...</div>
-                          )}
-                        </div>
+                      {connectionData.dbName && (
+                        <div>Database: <span className="font-medium">{connectionData.dbName}</span></div>
                       )}
-                      {connectionData.summary && (
-                        <div className="pt-2 border-t border-green-500/30 space-y-1 text-xs">
-                          <div>Sales Orders: {connectionData.summary.totalSalesOrders}</div>
-                          <div>Purchase Orders: {connectionData.summary.totalPurchaseOrders}</div>
-                          <div>Items: {connectionData.summary.totalItems}</div>
-                          <div>Customers: {connectionData.summary.totalCustomers}</div>
-                          <div>Suppliers: {connectionData.summary.totalSuppliers}</div>
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  {salesData && salesData.data && salesData.data.length > 0 && (
-                    <div className="rounded-xl border border-blue-500/40 bg-blue-500/10 px-4 py-3 space-y-3 max-h-96 overflow-y-auto">
-                      <div className="font-semibold text-white text-sm">Sales Orders ({salesData.count})</div>
-                      <div className="space-y-2">
-                        {salesData.data.map((order) => (
-                          <div key={order.id} className="bg-white/5 rounded-lg p-3 border border-white/10">
-                            <div className="flex justify-between items-start mb-2">
-                              <div>
-                                <div className="font-medium text-white text-sm">{order.name}</div>
-                                <div className="text-xs text-gray-400 mt-1">Customer: {order.customer}</div>
-                              </div>
-                              <span className={`px-2 py-1 rounded text-xs ${
-                                order.state === 'sale' ? 'bg-green-500/20 text-green-300' :
-                                order.state === 'draft' ? 'bg-yellow-500/20 text-yellow-300' :
-                                order.state === 'cancel' ? 'bg-red-500/20 text-red-300' :
-                                'bg-gray-500/20 text-gray-300'
-                              }`}>
-                                {order.state}
-                              </span>
-                            </div>
-                            <div className="grid grid-cols-2 gap-2 text-xs text-gray-400">
-                              <div>Date: {new Date(order.date).toLocaleDateString()}</div>
-                              <div className="text-right">Total: {order.total} {order.currency}</div>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
+                      <div className="mt-2 text-xs text-green-300">Data is being fetched and will appear on your dashboard shortly.</div>
                     </div>
                   )}
 
                     <form onSubmit={handleApiConnect} className="space-y-4">
-                      {selectedApiMethod === 'URL' && (
-                        <div className="space-y-2">
-                          <label className="text-sm text-gray-300">
-                            API URL <span className="text-red-400">*</span>
-                          </label>
-                          <input
-                            type="url"
-                            value={apiFormData.url}
-                            onChange={handleApiFormChange('url')}
-                            placeholder="https://api.example.com/endpoint"
-                            className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder-gray-500 focus:border-white/40 focus:outline-none"
-                            required
-                          />
-                        </div>
-                      )}
-
-                      {selectedApiMethod === 'URL_SECRET' && (
+                      {/* Odoo specific form fields */}
+                      {selectedErpSystem === 'ODOO' && (
                         <>
                           <div className="space-y-2">
                             <label className="text-sm text-gray-300">
-                              Base URL <span className="text-red-400">*</span>
+                              Odoo URL <span className="text-red-400">*</span>
                             </label>
                             <input
                               type="url"
                               value={apiFormData.url}
                               onChange={handleApiFormChange('url')}
-                              placeholder="https://your-erpnext-instance.com"
+                              placeholder="https://your-odoo-instance.com"
                               className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder-gray-500 focus:border-white/40 focus:outline-none"
                               required
                             />
                             <p className="text-xs text-gray-500 mt-1">
-                              Your ERPNext instance base URL (e.g., https://demo.erpnext.com)
+                              Your Odoo instance base URL (e.g., https://demo.odoo.com)
                             </p>
                           </div>
                           <div className="space-y-2">
                             <label className="text-sm text-gray-300">
-                              API Key <span className="text-red-400">*</span>
+                              Database Name <span className="text-red-400">*</span>
                             </label>
                             <input
                               type="text"
-                              value={apiFormData.apiKey}
-                              onChange={handleApiFormChange('apiKey')}
-                              placeholder="Enter your API key"
+                              value={apiFormData.dbName}
+                              onChange={handleApiFormChange('dbName')}
+                              placeholder="mycompany_db"
                               className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder-gray-500 focus:border-white/40 focus:outline-none"
                               required
                             />
                             <p className="text-xs text-gray-500 mt-1">
-                              Found in User Settings → API Access section
+                              Found in Settings → General Settings → Database
                             </p>
                           </div>
                           <div className="space-y-2">
                             <label className="text-sm text-gray-300">
-                              API Secret <span className="text-red-400">*</span>
+                              Username (Email) <span className="text-red-400">*</span>
                             </label>
                             <input
-                              type="password"
-                              value={apiFormData.secret}
-                              onChange={handleApiFormChange('secret')}
-                              placeholder="Enter your API secret"
-                              className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder-gray-500 focus:border-white/40 focus:outline-none"
-                              required
-                            />
-                            <p className="text-xs text-gray-500 mt-1">
-                              Generated when you click "Generate Keys" in API Access section
-                            </p>
-                          </div>
-                        </>
-                      )}
-
-                      {selectedApiMethod === 'USER_PASS' && selectedErpSystem !== 'ODOO' && (
-                        <>
-                          <div className="space-y-2">
-                            <label className="text-sm text-gray-300">
-                              Username <span className="text-red-400">*</span>
-                            </label>
-                            <input
-                              type="text"
+                              type="email"
                               value={apiFormData.username}
                               onChange={handleApiFormChange('username')}
-                              placeholder="Enter your username"
+                              placeholder="user@example.com"
                               className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder-gray-500 focus:border-white/40 focus:outline-none"
                               required
                             />
@@ -1039,6 +1365,110 @@ const Dashboard = () => {
                         </>
                       )}
 
+                      {/* Other ERP systems */}
+                      {selectedErpSystem !== 'ODOO' && (
+                        <>
+                          {selectedApiMethod === 'URL' && (
+                            <div className="space-y-2">
+                              <label className="text-sm text-gray-300">
+                                API URL <span className="text-red-400">*</span>
+                              </label>
+                              <input
+                                type="url"
+                                value={apiFormData.url}
+                                onChange={handleApiFormChange('url')}
+                                placeholder="https://api.example.com/endpoint"
+                                className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder-gray-500 focus:border-white/40 focus:outline-none"
+                                required
+                              />
+                            </div>
+                          )}
+
+                          {selectedApiMethod === 'URL_SECRET' && (
+                            <>
+                              <div className="space-y-2">
+                                <label className="text-sm text-gray-300">
+                                  Base URL <span className="text-red-400">*</span>
+                                </label>
+                                <input
+                                  type="url"
+                                  value={apiFormData.url}
+                                  onChange={handleApiFormChange('url')}
+                                  placeholder="https://your-erpnext-instance.com"
+                                  className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder-gray-500 focus:border-white/40 focus:outline-none"
+                                  required
+                                />
+                                <p className="text-xs text-gray-500 mt-1">
+                                  Your ERPNext instance base URL (e.g., https://demo.erpnext.com)
+                                </p>
+                              </div>
+                              <div className="space-y-2">
+                                <label className="text-sm text-gray-300">
+                                  API Key <span className="text-red-400">*</span>
+                                </label>
+                                <input
+                                  type="text"
+                                  value={apiFormData.apiKey}
+                                  onChange={handleApiFormChange('apiKey')}
+                                  placeholder="Enter your API key"
+                                  className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder-gray-500 focus:border-white/40 focus:outline-none"
+                                  required
+                                />
+                                <p className="text-xs text-gray-500 mt-1">
+                                  Found in User Settings → API Access section
+                                </p>
+                              </div>
+                              <div className="space-y-2">
+                                <label className="text-sm text-gray-300">
+                                  API Secret <span className="text-red-400">*</span>
+                                </label>
+                                <input
+                                  type="password"
+                                  value={apiFormData.secret}
+                                  onChange={handleApiFormChange('secret')}
+                                  placeholder="Enter your API secret"
+                                  className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder-gray-500 focus:border-white/40 focus:outline-none"
+                                  required
+                                />
+                                <p className="text-xs text-gray-500 mt-1">
+                                  Generated when you click "Generate Keys" in API Access section
+                                </p>
+                              </div>
+                            </>
+                          )}
+
+                          {selectedApiMethod === 'USER_PASS' && (
+                            <>
+                              <div className="space-y-2">
+                                <label className="text-sm text-gray-300">
+                                  Username <span className="text-red-400">*</span>
+                                </label>
+                                <input
+                                  type="text"
+                                  value={apiFormData.username}
+                                  onChange={handleApiFormChange('username')}
+                                  placeholder="Enter your username"
+                                  className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder-gray-500 focus:border-white/40 focus:outline-none"
+                                  required
+                                />
+                              </div>
+                              <div className="space-y-2">
+                                <label className="text-sm text-gray-300">
+                                  Password <span className="text-red-400">*</span>
+                                </label>
+                                <input
+                                  type="password"
+                                  value={apiFormData.password}
+                                  onChange={handleApiFormChange('password')}
+                                  placeholder="Enter your password"
+                                  className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder-gray-500 focus:border-white/40 focus:outline-none"
+                                  required
+                                />
+                              </div>
+                            </>
+                          )}
+                        </>
+                      )}
 
                       <div className="flex gap-3 pt-2">
                         <button
