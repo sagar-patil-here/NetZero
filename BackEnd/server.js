@@ -7,6 +7,7 @@ dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 5002;
+// Render automatically sets PORT environment variable
 
 // CORS Configuration - Allow all origins for development
 // In production, replace '*' with your frontend URL
