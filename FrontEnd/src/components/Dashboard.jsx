@@ -4,7 +4,7 @@ import { useAuth } from '../contexts/AuthContext'
 import { Mail, Calendar, TrendingUp, Camera, X } from 'lucide-react'
 import Navbar from './Navbar'
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5003'
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5002'
 
 const Dashboard = () => {
   const { currentUser, assignAvatar, loading } = useAuth()
@@ -360,8 +360,8 @@ const Dashboard = () => {
       if (error.message === 'Failed to fetch' || error.name === 'TypeError') {
         setConnectionError(
           'Cannot connect to backend server. Please ensure:\n' +
-          '1. Backend server is running on http://localhost:5000\n' +
-          '2. Run "npm start" in the BackEnd directory\n' +
+          '1. Backend server is running on http://localhost:5002\n' +
+          '2. Run "npm start" in the backend directory\n' +
           '3. Check browser console for CORS errors'
         )
       } else {
